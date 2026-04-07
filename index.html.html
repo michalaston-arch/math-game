@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<!--
+=============================================================
+  מתמטיקה בכיף 🎓 — הנחיות לפיתוח ותחזוקה
+=============================================================
+
+  ⚠️  לפני כל שינוי בקוד, שמרו על הכללים הבאים:
+
+  1. לוגיקת השאלות לפי כיתה / נושא / רמה
+     - הפונקציה makeQuestion(grade, topicIndex, level, numOptions)
+       מייצרת שאלה בהתאם לכיתה (1–7), נושא (אינדקס ב-CURRICULUM),
+       ורמה (basic / advanced / challenge).
+     - אסור לשנות את מבנה CURRICULUM או את החלוקה לרמות מבלי
+       לעדכן גם את makeQuestion ואת generateQuestions.
+     - כל שאלה חייבת להחזיר: { text, correctStr, options[] }
+
+  2. CSS בעברית RTL
+     - כל ה-layout מוגדר עם dir="rtl" על ה-html.
+     - טקסט מתמטי (LTR) עוטף ב- .seq-ltr / .math-line / .math-expr
+       עם direction:ltr ו-unicode-bidi:isolate — אל תסירו אלה.
+     - שברים מוצגים דרך .frac ו-.mixed-num — CSS בלבד, ללא תמונות.
+
+  3. פונקציות ליבה — אסור למחוק או לשנות חתימה:
+     • fracHTML(text)
+         ממיר טקסט שבר / כוכבים / סדרה ל-HTML עם עיצוב נכון.
+         תומך ב: [STARS], [ROW], → (סדרה), שברים n/d, מספרים מעורבים.
+     • generateQuestions(grade, topicIndex, level, numOptions)
+         יוצר מאגר של QUESTIONS_PER_QUIZ שאלות ייחודיות ללא חזרה.
+     • pushOnline() / syncOnline()
+         מסנכרנות ניקוד עם shared storage.
+         pushOnline — שולחת ניקוד מקומי לענן (לאחר כל חידון).
+         syncOnline — מורידה וממזגת ניקוד מהענן.
+
+=============================================================
+-->
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מתמטיקה בכיף 🎉</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --pink: #ff6eb4; --pink-light: #ffd6ec;
+  --teal: #5ecfda; --teal-light: #d6f5f8;
+  --bg: #fdf4f9; --text: #3a2a4a;
+  --gold: #ffc94d; --green: #5dd882; --red: #ff6b6b;
+  --shadow: 0 4px 20px rgba(255,110,180,0.15); --radius: 20px;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--text); min-height:100vh;
+  background-image:radial-gradient(circle at 20% 20%,#ffeef8 0%,transparent 50%),radial-gradient(circle at 80% 80%,#e8f9fc 0%,transparent 50%); }
+h1,h2,h3 { font-family:'Fredoka One',cursive; }
+.screen { display:none; min-height:100vh; flex-direction:column; align-items:center; }
+.screen.active { display:flex; }
+#login-screen { justify-content:center; gap:20px; padding:24px; }
+.app-logo { font-family:'Fredoka One',cursive; font-size:3rem; color:var(--pink); text-shadow:3px 3px 0 var(--teal-light); text-align:center; line-height:1.1; }
+.app-logo span { color:var(--teal); }
+.app-subtitle { color:#999; font-size:0.95rem; text-align:center; }
+.card { background:white; border-radius:var(--radius); padding:28px 24px; width:100%; max-width:380px; box-shadow:var(--shadow); border:2px solid var(--pink-light); display:flex; flex-direction:column; gap:12px; }
+.card h2 { font-size:1.3rem; color:var(--pink); text-align:center; }
+.input-field { width:100%; padding:12px 16px; border:2px solid var(--pink-light); border-radius:12px; font-family:'Heebo',sans-serif; font-size:1rem; color:var(--text); outline:none; transition:border-color 0.2s; text-align:right; }
+.input-field:focus { border-color:var(--pink); }
+.btn { padding:12px 24px; border-radius:14px; border:none; font-family:'Fredoka One',cursive; font-size:1.1rem; cursor:pointer; transition:transform 0.15s,box-shadow 0.15s; width:100%; }
+.btn:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,0.12); }
+.btn:active { transform:scale(0.98); }
+.btn-pink { background:var(--pink); color:white; }
+.btn-teal { background:var(--teal); color:white; }
+.btn-gold { background:var(--gold); color:#7a5c00; }
+.topic-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+.topic-card { background:white; border-radius:18px; padding:16px 12px; cursor:pointer; box-shadow:var(--shadow); border:3px solid transparent; transition:all 0.2s; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; min-height:85px; justify-content:center; }
+.topic-card:hover { transform:translateY(-3px); }
+.topic-card:nth-child(4n+1) { border-color:#ff9de2; background:linear-gradient(135deg,#fff 60%,#fff0f9); }
+.topic-card:nth-child(4n+2) { border-color:#9de8ff; background:linear-gradient(135deg,#fff 60%,#f0fbff); }
+.topic-card:nth-child(4n+3) { border-color:#b5f0a5; background:linear-gradient(135deg,#fff 60%,#f2fff0); }
+.topic-card:nth-child(4n+4) { border-color:#ffd59d; background:linear-gradient(135deg,#fff 60%,#fff8f0); }
+.topic-name { font-family:'Fredoka One',cursive; font-size:0.9rem; color:var(--text); line-height:1.3; }
+.topic-stars { font-size:0.7rem; color:#ccc; }
+.toggle-link { text-align:center; color:var(--teal); cursor:pointer; font-size:0.9rem; text-decoration:underline; }
+.error-msg { color:var(--red); font-size:0.85rem; text-align:center; min-height:18px; }
+.name-suggestions { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { background:var(--teal-light); color:var(--teal); border:none; border-radius:20px; padding:5px 12px; font-size:0.85rem; cursor:pointer; font-family:'Heebo',sans-serif; transition:background 0.2s; }
+.chip:hover { background:var(--teal); color:white; }
+.divider { border:none; border-top:1px solid var(--pink-light); margin:4px 0; }
+.teacher-link { color:#ccc; font-size:0.82rem; cursor:pointer; text-align:center; text-decoration:underline; }
+.teacher-link:hover { color:var(--teal); }
+#app-screen { justify-content:flex-start; padding:0; }
+.app-header { width:100%; background:white; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 2px 12px rgba(255,110,180,0.1); position:sticky; top:0; z-index:100; }
+.header-logo { font-family:'Fredoka One',cursive; font-size:1.3rem; color:var(--pink); }
+.header-user { display:flex; align-items:center; gap:10px; font-size:0.9rem; }
+.avatar { width:36px; height:36px; border-radius:50%; background:var(--pink-light); display:flex; align-items:center; justify-content:center; font-size:1.1rem; font-weight:700; color:var(--pink); }
+.logout-btn { background:none; border:none; color:#bbb; cursor:pointer; font-size:0.8rem; font-family:'Heebo',sans-serif; }
+.logout-btn:hover { color:var(--red); }
+.nav-tabs { width:100%; display:flex; background:white; border-bottom:2px solid var(--pink-light); }
+.nav-tab { flex:1; padding:10px; text-align:center; cursor:pointer; font-family:'Fredoka One',cursive; font-size:1rem; color:#bbb; border-bottom:3px solid transparent; transition:all 0.2s; margin-bottom:-2px; }
+.nav-tab.active { color:var(--pink); border-bottom-color:var(--pink); }
+.app-content { width:100%; max-width:700px; padding:20px; flex:1; }
+.section-title { font-family:'Fredoka One',cursive; font-size:1.3rem; color:var(--text); margin-bottom:16px; }
+.grade-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:14px; }
+.grade-card { background:white; border-radius:var(--radius); padding:20px 12px; text-align:center; cursor:pointer; box-shadow:var(--shadow); border:2px solid transparent; transition:all 0.2s; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.grade-card:hover { border-color:var(--pink); transform:translateY(-3px); }
+.grade-emoji { font-size:2.2rem; }
+.grade-label { font-family:'Fredoka One',cursive; font-size:1.1rem; }
+.grade-score { font-size:0.8rem; color:#999; }
+.back-btn { background:none; border:none; cursor:pointer; color:var(--teal); font-size:0.95rem; font-family:'Heebo',sans-serif; display:flex; align-items:center; gap:4px; margin-bottom:16px; padding:0; }
+.back-btn:hover { color:var(--pink); }
+.level-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.level-card { background:white; border-radius:var(--radius); padding:20px 12px; text-align:center; cursor:pointer; box-shadow:var(--shadow); border:2px solid transparent; transition:all 0.2s; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.level-card:hover { transform:translateY(-3px); }
+.level-basic { border-color:var(--green); }
+.level-advanced { border-color:var(--teal); }
+.level-challenge { border-color:var(--gold); }
+.level-emoji { font-size:2rem; }
+.level-name { font-family:'Fredoka One',cursive; font-size:1rem; }
+.level-desc { font-size:0.8rem; color:#999; }
+#quiz-screen { justify-content:flex-start; padding:20px; align-items:center; }
+.quiz-header { width:100%; max-width:600px; display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.quiz-info { font-size:0.9rem; color:#999; }
+.quiz-score-badge { background:var(--pink-light); color:var(--pink); border-radius:20px; padding:5px 14px; font-family:'Fredoka One',cursive; font-size:1rem; }
+.question-card { background:white; border-radius:var(--radius); padding:28px 24px; width:100%; max-width:600px; box-shadow:var(--shadow); border:2px solid var(--pink-light); }
+.question-num { font-size:0.85rem; color:#bbb; margin-bottom:8px; }
+.question-text { font-family:'Fredoka One',cursive; font-size:1.35rem; color:var(--text); margin-bottom:24px; line-height:1.8; text-align:center; white-space:pre-line; direction:rtl; unicode-bidi:embed; }
+.question-text .math-expr { display:inline-block; direction:ltr; unicode-bidi:isolate; }
+.stars-block { display:inline-flex; flex-direction:column; align-items:center; gap:1px; margin:2px auto; line-height:1; }
+.star-row { display:block; line-height:1.1; font-size:1.4rem; text-align:center; }
+.answer-btn .stars-block { gap:1px; }
+.answer-btn .star-row { font-size:0.95rem; line-height:1.15; }
+.hebrew-line { display:block; direction:rtl; text-align:center; }
+.answers-grid { display:grid; gap:12px; }
+.answer-btn { padding:14px 18px; border-radius:14px; border:2px solid var(--pink-light); background:white; font-family:'Fredoka One',cursive; font-size:1.5rem; cursor:pointer; transition:all 0.2s; text-align:center; color:var(--text); -webkit-tap-highlight-color:transparent; outline:none; display:flex; align-items:center; justify-content:center; min-height:60px; }
+.answer-btn .stars-block { margin:4px auto; }
+.answer-btn:focus { outline:none; box-shadow:none; background:white; border-color:var(--pink-light); }
+.answer-btn:active { transform:scale(0.97); }
+@media (hover: hover) { .answer-btn:hover:not(:disabled) { border-color:var(--pink); background:var(--pink-light); } }
+.frac { display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; margin:0 2px; line-height:1.1; }
+.frac .num { border-bottom:2.5px solid currentColor; padding:0 3px; font-size:0.9em; }
+.frac .den { padding:0 3px; font-size:0.9em; }
+.mixed-num { display:inline-flex; flex-direction:row; align-items:center; gap:3px; vertical-align:middle; direction:ltr; unicode-bidi:isolate; }
+.seq-ltr { display:block; direction:ltr; unicode-bidi:isolate; text-align:center; font-size:1.05em; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:'Fredoka One',cursive; }
+.math-line { display:block; direction:ltr; unicode-bidi:isolate; text-align:center; }
+.whole-part { font-size:1em; font-weight:700; }
+.answer-btn.correct { background:#e8fdf0; border-color:var(--green); color:#2d8a4e; }
+.answer-btn.wrong { background:#fff0f0; border-color:var(--red); color:var(--red); }
+.answer-btn:disabled { cursor:default; }
+.feedback-msg { text-align:center; font-family:'Fredoka One',cursive; font-size:1.2rem; margin-top:16px; min-height:32px; }
+.feedback-correct { color:var(--green); }
+.feedback-wrong { color:var(--red); }
+.next-btn-wrap { text-align:center; margin-top:16px; }
+#results-screen { justify-content:center; padding:24px; gap:20px; }
+.results-card { background:white; border-radius:var(--radius); padding:32px 24px; width:100%; max-width:400px; box-shadow:var(--shadow); border:2px solid var(--pink-light); text-align:center; display:flex; flex-direction:column; gap:14px; }
+.results-emoji { font-size:4rem; }
+.results-title { font-family:'Fredoka One',cursive; font-size:1.8rem; color:var(--pink); }
+.results-score { font-family:'Fredoka One',cursive; font-size:3rem; color:var(--text); }
+.results-sub { color:#999; font-size:0.95rem; }
+.results-btns { display:flex; flex-direction:column; gap:10px; }
+.leaderboard-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
+.leaderboard-table th { font-family:'Fredoka One',cursive; color:#bbb; font-size:0.85rem; padding:4px 12px; text-align:right; }
+.leaderboard-table td { background:white; padding:12px 14px; font-size:0.95rem; }
+.leaderboard-table td:first-child { border-radius:14px 0 0 14px; }
+.leaderboard-table td:last-child { border-radius:0 14px 14px 0; }
+.rank-badge { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-family:'Fredoka One',cursive; font-size:0.9rem; }
+.rank-1 { background:var(--gold); color:#7a5c00; }
+.rank-2 { background:#e0e0e0; color:#555; }
+.rank-3 { background:#f0c090; color:#7a4400; }
+.rank-other { background:var(--pink-light); color:var(--pink); }
+.me-row td { background:var(--pink-light); font-weight:700; }
+.player-score { font-family:'Fredoka One',cursive; color:var(--pink); }
+.grade-pill { display:inline-block; background:var(--teal-light); color:var(--teal); border-radius:20px; padding:2px 10px; font-size:0.8rem; }
+.teacher-panel { width:100%; max-width:700px; padding:20px; }
+.teacher-section { margin-bottom:28px; }
+.teacher-section h3 { font-family:'Fredoka One',cursive; font-size:1.1rem; color:var(--teal); margin-bottom:12px; }
+.students-table { width:100%; border-collapse:separate; border-spacing:0 6px; }
+.students-table th { font-size:0.82rem; color:#bbb; padding:4px 12px; text-align:right; font-family:'Fredoka One',cursive; }
+.students-table td { background:white; padding:10px 14px; font-size:0.9rem; }
+.students-table td:first-child { border-radius:12px 0 0 12px; }
+.students-table td:last-child { border-radius:0 12px 12px 0; }
+.action-btn { background:none; border:1px solid var(--red); color:var(--red); border-radius:8px; padding:3px 10px; font-size:0.8rem; cursor:pointer; font-family:'Heebo',sans-serif; }
+.action-btn:hover { background:var(--red); color:white; }
+.empty-state { text-align:center; color:#ccc; padding:40px 20px; font-size:1rem; }
+.approve-btn{background:none;border:1px solid #5dd882;color:#2d8a4e;border-radius:8px;padding:3px 10px;font-size:0.8rem;cursor:pointer;font-family:'Heebo',sans-serif;margin-left:4px;}
+.approve-btn:hover{background:#5dd882;color:white;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+@keyframes pop { 0%{transform:scale(0.5);opacity:0} 70%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
+.pop { animation:pop 0.3s ease forwards; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+.shake { animation:shake 0.3s ease; }
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="screen active">
+  <div class="app-logo">🎓 מתמטיקה<br><span>בכיף!</span></div>
+  <p class="app-subtitle">תרגול מתמטיקה לכיתות א׳–ז׳</p>
+  <div class="card" id="student-login-card">
+    <h2>👋 מי אתה/את?</h2>
+    <input class="input-field" id="student-name-input" placeholder="הכנס/י את שמך" maxlength="20" autocomplete="off">
+    <div id="name-error" class="error-msg"></div>
+    <div id="name-suggestions" class="name-suggestions" style="display:none"></div>
+    <button class="btn btn-pink" onclick="studentLogin()">בוא נתחיל! 🚀</button>
+    <hr class="divider">
+    <span class="teacher-link" onclick="showTeacherLogin()">🔑 כניסת מורה</span>
+  </div>
+  <div class="card" id="teacher-login-card" style="display:none">
+    <h2>🔑 כניסת מורה</h2>
+    <input class="input-field" id="teacher-pass-input" type="password" placeholder="סיסמת מורה">
+    <div id="teacher-error" class="error-msg"></div>
+    <button class="btn btn-teal" onclick="teacherLogin()">כניסה</button>
+    <span class="toggle-link" onclick="showStudentLogin()">← חזרה</span>
+  </div>
+</div>
+
+<div id="app-screen" class="screen">
+  <div class="app-header">
+    <div class="header-logo">🎓 מתמטיקה בכיף</div>
+    <div class="header-user">
+      <div class="avatar" id="header-avatar">?</div>
+      <span id="header-name"></span>
+      <button class="logout-btn" onclick="logout()">יציאה</button>
+    </div>
+  </div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showTab('grades')">📚 תרגול</div>
+    <div class="nav-tab" onclick="showTab('leaderboard')">🏆 טבלת ניקוד</div>
+  </div>
+  <div class="app-content">
+    <div id="tab-grades">
+      <div id="view-grades">
+        <p class="section-title">בחר/י כיתה לתרגול:</p>
+        <div class="grade-grid" id="grade-grid"></div>
+      </div>
+      <div id="view-topics" style="display:none">
+        <button class="back-btn" onclick="showGrades()">← חזרה לכיתות</button>
+        <p class="section-title" id="topics-title"></p>
+        <div class="topic-grid" id="topic-list"></div>
+      </div>
+      <div id="view-levels" style="display:none">
+        <button class="back-btn" onclick="showTopics()">← חזרה לנושאים</button>
+        <p class="section-title" id="levels-title"></p>
+        <div class="level-grid">
+          <div class="level-card level-basic" onclick="startQuiz('basic')">
+            <div class="level-emoji">🌱</div>
+            <div class="level-name">בסיסי</div>
+            <div class="level-desc">נתחיל בקל</div>
+          </div>
+          <div class="level-card level-advanced" onclick="startQuiz('advanced')">
+            <div class="level-emoji">⚡</div>
+            <div class="level-name">מתקדם</div>
+            <div class="level-desc">קצת יותר קשה</div>
+          </div>
+          <div class="level-card level-challenge" onclick="startQuiz('challenge')">
+            <div class="level-emoji">🔥</div>
+            <div class="level-name">אתגרי</div>
+            <div class="level-desc">למי שמעז!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="tab-leaderboard" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="section-title" style="margin:0">🏆 טבלת ניקוד</p>
+        <span id="leaderboard-sync-msg" style="font-size:0.8rem;color:#aaa"></span>
+      </div>
+      <table class="leaderboard-table">
+        <thead><tr><th>מקום</th><th>שם</th><th>כיתה</th><th>ניקוד</th></tr></thead>
+        <tbody id="leaderboard-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="quiz-screen" class="screen">
+  <div class="quiz-header" style="max-width:600px;width:100%">
+    <button class="back-btn" onclick="quitQuiz()">← יציאה</button>
+    <div class="quiz-info" id="quiz-info">שאלה 1 מתוך 10</div>
+    <div class="quiz-score-badge">⭐ <span id="quiz-score-live">0</span></div>
+  </div>
+  <div class="question-card">
+    <div class="question-num" id="question-num"></div>
+    <div class="question-text" id="question-text"></div>
+    <div class="answers-grid" id="answers-grid"></div>
+    <div class="feedback-msg" id="feedback-msg"></div>
+    <div class="next-btn-wrap">
+      <button class="btn btn-pink" id="next-btn" style="display:none;width:auto;padding:10px 30px" onclick="nextQuestion()">הבאה ▶</button>
+    </div>
+  </div>
+</div>
+
+<div id="results-screen" class="screen">
+  <div class="results-card">
+    <div class="results-emoji" id="results-emoji">🎉</div>
+    <div class="results-title">סיימת!</div>
+    <div class="results-score" id="results-score-text"></div>
+    <div class="results-sub" id="results-sub"></div>
+    <div class="results-btns">
+      <button class="btn btn-gold" id="next-level-btn" onclick="goNextLevel()" style="display:none">הבא ⬆️</button>
+      <button class="btn btn-pink" onclick="tryAgain()">חזור על השלב 🔄</button>
+      <button class="btn btn-teal" onclick="goHome()">חזרה לראשי 🏠</button>
+    </div>
+  </div>
+</div>
+
+<div id="teacher-screen" class="screen">
+  <div class="app-header">
+    <div class="header-logo">👩‍🏫 פאנל מורה</div>
+    <button class="logout-btn" onclick="logout()" style="color:var(--red)">יציאה</button>
+  </div>
+  <div class="teacher-panel">
+    <div class="teacher-section">
+      <h3>⏳ ממתינים לאישור</h3>
+      <table class="students-table">
+        <thead><tr><th>שם</th><th>תאריך</th><th>פעולה</th></tr></thead>
+        <tbody id="pending-body"></tbody>
+      </table>
+    </div>
+    <div class="teacher-section">
+      <h3>📊 כל התלמידים</h3>
+      <table class="students-table">
+        <thead><tr><th>שם</th><th>כיתה</th><th>ניקוד</th><th>פעולות</th></tr></thead>
+        <tbody id="teacher-students-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================
+// קבועים
+// =============================================================
+const TEACHER_PASS = 'מיכל123';
+const QUESTIONS_PER_QUIZ = 10;
+
+// =============================================================
+// תכנית הלימודים — כיתות א׳ עד ז׳
+// =============================================================
+const CURRICULUM = {
+  1: { name:'כיתה א׳', emoji:'🐣', topics:[
+    'הכרת המספרים',
+    'השוואת מספרים (<, >, =)','מספר זוגי / אי זוגי',
+    'חיבור וחיסור עד 10','חיבור וחיסור עד 20',
+    'הנדסה - צורות וקווים','סדרות'
+  ]},
+  2: { name:'כיתה ב׳', emoji:'🌟', topics:[
+    'חיבור וחיסור במאוזן עד 100',
+    'בעיות מילוליות חיבור וחיסור','סדרות',
+    'מספר עוקב ומספר קודם','כפל',
+    'הנדסה'
+  ]},
+  3: { name:'כיתה ג׳', emoji:'🚀', topics:[
+    'חיבור וחיסור בתחום הרבבה','הכפלה פי 10 ופי 100',
+    'המבנה העשרוני - יחידות, עשרות, מאות','ביסוס לוח הכפל',
+    'בעיות מילוליות דו שלביות','סדר פעולות חשבון',
+    'ציר המספרים','חוק הפילוג וחוק החילוף',
+    'הנדסה - זוויות, משולשים, מאונכים'
+  ]},
+  4: { name:'כיתה ד׳', emoji:'⚡', topics:[
+    'הכרת השבר','השוואת שברים עם מכנים זהים',
+    'השוואת שברים עם מכנים שונים','חיבור וחיסור שברים עם מכנה משותף',
+    'חיבור וחיסור בתחום הרבבה','כפל','חילוק','אומדן',
+    'סדר פעולות חשבון','מספר ראשוני ופריק','בעיות מילוליות',
+    'תכונות ה-0 וה-1','חקר נתונים',
+    'הנדסה - מצולעים, שטח והיקף, זוויות, אלכסון, גובה'
+  ]},
+  5: { name:'כיתה ה׳', emoji:'🔥', topics:[
+    'השוואה בין שברים','מעבר משבר מדומה למספר מעורב',
+    'הרחבה וצימצום שברים','חיבור וחיסור שברים עם מכנים שונים',
+    'בעיות מילוליות בשברים','מעבר משבר רגיל לעשרוני',
+    'השוואת מספרים עשרוניים','חיבור וחיסור מספרים עשרוניים',
+    'חילוק במספר דו ספרתי','סימני התחלקות של 2, 5, 10',
+    'חקר נתונים וממוצע','הנדסה - היקף ושטח משולש ומצולעים',
+    'סכום זוויות במשולש','תכונות המרובעים'
+  ]},
+  6: { name:'כיתה ו׳', emoji:'💎', topics:[
+    'חיסור שברים עם פריטה','כפל שברים','חילוק שברים',
+    'כפל וחילוק מספרים עשרוניים','ציר מספרים - מספרים עשרוניים',
+    'מעבר ממספר עשרוני לאחוזים','בעיות מילוליות - מספרים עשרוניים',
+    'חלק מכמות','ממוצע וחציון',
+    'הנדסה - פאון, מנסרות, פירמידות','שטח פנים ונפח',
+    'מעגל - שטח והיקף, רדיוס, קוטר'
+  ]},
+  7: { name:'כיתה ז׳', emoji:'🎓', topics:[
+    'מספרים שליליים, חיוביים ואפס','ביטויים אלגבריים',
+    'משוואות','חזקות','שאלות מילוליות'
+  ]}
+};
+
+// =============================================================
+// פונקציות עזר
+// =============================================================
+function rand(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=rand(0,i);[a[i],a[j]]=[a[j],a[i]];}return a;}
+function nwPos(c,s){s=s||Math.max(2,Math.floor(Math.abs(c)*0.3)+2);let w,tries=0;do{w=c+(Math.random()<0.5?1:-1)*rand(1,s);tries++;}while((w<=0||w===c)&&tries<50);return Math.max(1,w);}
+function nw(c,s){s=s||Math.max(2,Math.floor(Math.abs(c)*0.3)+2);return c+(Math.random()<0.5?1:-1)*rand(1,s);}
+function nwSafe(c,s){s=s||Math.max(2,Math.floor(Math.abs(c)*0.3)+2);let w,t=0;do{w=c+(Math.random()<0.5?1:-1)*rand(1,s);t++;}while(w<1&&t<50);return Math.max(1,w);}
+
+function buildQ(text,correct,numOptions,wrongFn){
+  const wrongs=new Set();let tries=0;
+  while(wrongs.size<numOptions-1&&tries<100){tries++;const w=wrongFn();if(w!==correct&&w!=null&&w!==''&&String(w)!==String(correct)){wrongs.add(w);}
+  return{text,correctStr:String(correct),options:shuffle([String(correct),...[...wrongs].map(String)])};
+}
+
+// =============================================================
+// ⚠️ fracHTML — אל תשנו את הפונקציה הזו!
+// ממירה טקסט שבר/כוכבים/סדרה ל-HTML
+// =============================================================
+function fracHTML(text){
+  if(!text) return '';
+  if(text.includes('[STARS]')){
+    const hasNewline=text.includes('\n');
+    if(hasNewline){
+      const parts=text.split('\n');
+      const title=parts[0];
+      const starsRaw=parts[1].replace('[STARS]','');
+      const rows=starsRaw.split('[ROW]').filter(r=>r!=='___');
+      const starsHTML=rows.map(r=>`<div class="star-row">${r}</div>`).join('');
+      return `<span class="hebrew-line">${title}</span><div class="stars-block">${starsHTML}</div>`;
+    } else {
+      const starsRaw=text.replace('[STARS]','');
+      const parts=starsRaw.split('[ROW]');
+      const rows=parts.filter(r=>r!=='___');
+      const starsHTML=rows.map(r=>`<div class="star-row">${r}</div>`).join('');
+      return `<div class="stars-block">${starsHTML}</div>`;
+    }
+  }
+  const lines=text.split('\n');
+  const processed=lines.map(line=>{
+    if(line.startsWith('→ ')){
+      const seq=line.substring(2);
+      const highlighted=seq.replace(/\[\?\]/g,'<span style="color:var(--pink);font-weight:900">[?]</span>');
+      return `<span class="seq-ltr">${highlighted}</span>`;
+    }
+    const isHebrew=/^[\u05D0-\u05EA\(]/.test(line.trim());
+    if(isHebrew){
+      let l=line.replace(/(\d+)\s+ו-(\d+)\/(\d+)/g,(m,w,n,d)=>`<span class="mixed-num"><span class="whole-part">${w}</span><span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span></span>`);
+      l=l.replace(/(\d+)\/(\d+)/g,(m,n,d)=>`<span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span>`);
+      return l;
+    }
+    let l=line.replace(/(\d+)\s+ו-(\d+)\/(\d+)/g,(m,w,n,d)=>`<span class="mixed-num"><span class="whole-part">${w}</span><span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span></span>`);
+    l=l.replace(/(\d+)\/(\d+)/g,(m,n,d)=>`<span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span>`);
+    return `<span class="math-line">${l}</span>`;
+  });
+  return processed.join('<br>');
+}
+
+// =============================================================
+// ⚠️ makeQuestion — לוגיקת השאלות לפי כיתה/נושא/רמה
+// =============================================================
+function makeQuestion(grade,topicIndex,level,numOptions){
+  const diff={basic:1,advanced:2,challenge:3}[level];
+  const topic=CURRICULUM[grade].topics[topicIndex];
+
+  if(grade===1){
+
+    // השוואת מספרים
+    if(topic.includes('השוואת')){
+      if(diff===1){
+        const a=rand(1,10),b=rand(1,10);
+        const ans=a>b?'>':a<b?'<':'=';
+        return buildQ(a+'  ___  '+b,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);
+      } else if(diff===2){
+        const a=rand(1,20),b=rand(1,20);
+        const ans=a>b?'>':a<b?'<':'=';
+        return buildQ(a+'  ___  '+b,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);
+      } else {
+        const vi=rand(0,3);
+        let l,lv,r,rv;
+        if(vi===0){const n=rand(2,8);l=n+'+'+n;lv=n+n;r=n+'+'+(n+1);rv=n+n+1;}
+        else if(vi===1){const a=rand(5,10),b=rand(1,5);l=a+'+'+b;lv=a+b;r=b+'+'+a;rv=b+a;}
+        else if(vi===2){const a=rand(5,15),b=rand(1,5);l=a+'+'+b;lv=a+b;r=''+(a+b);rv=a+b;}
+        else{const n=rand(2,8);l=n+'+'+n;lv=n+n;r=n+'+'+(n-1>=1?n-1:n+1);rv=n+(n-1>=1?n-1:n+1);}
+        const ans=lv>rv?'>':lv<rv?'<':'=';
+        return buildQ(l+'  ___  '+r,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);
+      }
+    }
+
+    // מספר זוגי / אי זוגי
+    if(topic.includes('זוגי')){
+      let n;
+      if(diff===1) n=rand(1,10);
+      else if(diff===2) n=rand(1,20);
+      else n=rand(21,99);
+      const ans=n%2===0?'זוגי':'אי זוגי';
+      return buildQ('המספר '+n+' הוא:',ans,2,()=>n%2===0?'אי זוגי':'זוגי');
+    }
+
+    // חיבור וחיסור עד 10
+    if(topic.includes('עד 10')){
+      if(diff===1){
+        const type=rand(0,1);
+        if(type===0){const n=rand(1,5);return buildQ(n+' + '+n+'  =',n+n,numOptions,()=>Math.max(1,n+n+(rand(0,1)===0?1:-1)));}
+        else{const n=rand(2,9);return buildQ(n+' + 1  =',n+1,numOptions,()=>Math.max(1,n+1+(rand(0,1)===0?1:-1)));}
+      } else if(diff===2){
+        const type=rand(0,2);
+        if(type===0){const a=rand(1,9);return buildQ(a+' + __  = 10',10-a,numOptions,()=>Math.max(1,10-a+(rand(0,1)===0?1:-1)));}
+        else if(type===1){const a=rand(1,9);return buildQ('10 - '+a+'  =',10-a,numOptions,()=>Math.max(1,10-a+(rand(0,1)===0?1:-1)));}
+        else{const a=rand(1,9);return buildQ('__ + '+a+'  = 10',10-a,numOptions,()=>Math.max(1,10-a+(rand(0,1)===0?1:-1)));}
+      } else {
+        const a=rand(1,8),b=rand(1,10-a);
+        return rand(0,1)===0?
+          buildQ(a+' + '+b+'  =',a+b,numOptions,()=>Math.max(1,a+b+(rand(0,1)===0?1:-1))):
+          buildQ((a+b)+' - '+b+'  =',a,numOptions,()=>Math.max(1,a+(rand(0,1)===0?1:-1)));
+      }
+    }
+
+    // חיבור וחיסור עד 20
+    if(topic.includes('עד 20')){
+      if(diff===1){
+        const type=rand(0,1);
+        if(type===0){const n=rand(6,9);return buildQ(n+' + '+n+'  =',n+n,numOptions,()=>Math.max(1,n+n+(rand(0,1)===0?1:-1)));}
+        else{const subs=[5,10,15,8,12];const sub=subs[rand(0,subs.length-1)];return buildQ('20 - '+sub+'  =',20-sub,numOptions,()=>Math.max(1,20-sub+(rand(0,1)===0?2:-2)));}
+      } else if(diff===2){
+        const type=rand(0,1);
+        if(type===0){const b=rand(1,9);return buildQ('10 + '+b+'  =',10+b,numOptions,()=>Math.max(1,10+b+(rand(0,1)===0?1:-1)));}
+        else{const tens=[12,13,14,15,16,17,18];const t=tens[rand(0,tens.length-1)];const sub=rand(1,t-10);return buildQ(t+' - '+sub+'  =',t-sub,numOptions,()=>Math.max(1,t-sub+(rand(0,1)===0?1:-1)));}
+      } else {
+        const pairs=[[9,8],[8,3],[7,6],[9,4],[8,7],[12,4],[13,5],[11,4],[14,6],[15,7]];
+        const pair=pairs[rand(0,pairs.length-1)];const a=pair[0],b=pair[1];
+        return rand(0,1)===0?
+          buildQ(a+' + '+b+'  =',a+b,numOptions,()=>Math.max(1,a+b+(rand(0,1)===0?1:-1))):
+          buildQ((a+b)+' - '+b+'  =',a,numOptions,()=>Math.max(1,a+(rand(0,1)===0?1:-1)));
+      }
+    }
+
+    // הנדסה
+    if(topic.includes('הנדסה')){
+      if(diff===1){
+        const shapes=[
+          {q:'🔺 זוהי:',a:'משולש',w:['ריבוע','עיגול','מלבן']},
+          {q:'⬛ זוהי:',a:'ריבוע',w:['משולש','עיגול','מלבן']},
+          {q:'⭕ זוהי:',a:'עיגול',w:['ריבוע','משולש','מלבן']},
+          {q:'🔷 זוהי:',a:'מעויין',w:['ריבוע','משולש','מלבן']},
+          {q:'כמה צלעות יש למשולש?',a:'3',w:['4','5','2']},
+          {q:'כמה צלעות יש לריבוע?',a:'4',w:['3','5','6']},
+          {q:'לאיזו צורה אין פינות?',a:'עיגול',w:['ריבוע','משולש','מלבן']},
+          {q:'לאיזו צורה יש 3 פינות?',a:'משולש',w:['ריבוע','עיגול','מלבן']},
+          {q:'לאיזו צורה יש 4 צלעות שוות?',a:'ריבוע',w:['מלבן','משולש','מעויין']},
+          {q:'לאיזו צורה יש 2 זוגות צלעות שוות?',a:'מלבן',w:['ריבוע','משולש','עיגול']},
+        ];
+        const it=shapes[rand(0,shapes.length-1)];
+        return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);
+      } else if(diff===2){
+        const lines=[
+          {q:'קו שחוזר לנקודת ההתחלה נקרא:',a:'קו סגור',w:['קו פתוח','קו ישר','קו שבור']},
+          {q:'קו שאינו חוזר לנקודת ההתחלה נקרא:',a:'קו פתוח',w:['קו סגור','קו ישר','קו שבור']},
+          {q:'קו שאינו מתכופף כלל נקרא:',a:'קו ישר',w:['קו עקום','קו סגור','קו שבור']},
+          {q:'קו המורכב מקטעים ישרים בזוויות נקרא:',a:'קו שבור',w:['קו ישר','קו עקום','קו סגור']},
+          {q:'קו שמתכופף בצורה חלקה נקרא:',a:'קו עקום',w:['קו ישר','קו שבור','קו סגור']},
+          {q:'עיגול הוא דוגמה של:',a:'קו עקום סגור',w:['קו ישר','קו שבור פתוח','קו עקום פתוח']},
+          {q:'מלבן הוא דוגמה של:',a:'קו שבור סגור',w:['קו ישר','קו עקום סגור','קו שבור פתוח']},
+        ];
+        const it=lines[rand(0,lines.length-1)];
+        return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);
+      } else {
+        const scenes=[
+          {svg:'[SVG1]',q:'כמה מרובעים ומלבנים יש?',a:'3',w:['2','4','5']},
+          {svg:'[SVG2]',q:'כמה משולשים יש?',a:'3',w:['2','4','1']},
+          {svg:'[SVG3]',q:'כמה עיגולים יש?',a:'2',w:['1','3','4']},
+        ];
+        const scene=scenes[rand(0,scenes.length-1)];
+        return buildQ(scene.q,scene.a,numOptions,()=>scene.w[rand(0,scene.w.length-1)]);
+      }
+    }
+
+    // סדרות
+    if(topic.includes('סדרות')){
+      if(diff===1){
+        const up=rand(0,1)===0;
+        if(up){
+          const starts=[10,20,30,40,50,60,70];
+          const s=starts[rand(0,starts.length-1)];
+          return buildQ('השלימו:\n'+String.fromCharCode(8594)+' '+s+' , '+(s+10)+' , '+(s+20)+' , __',s+30,numOptions,()=>nwPos(s+30,10));
+        } else {
+          const starts=[70,80,90,100,60,50];
+          const s=starts[rand(0,starts.length-1)];
+          const ans=Math.max(10,s-30);
+          return buildQ('השלימו:\n'+String.fromCharCode(8594)+' '+s+' , '+(s-10)+' , '+(s-20)+' , __',ans,numOptions,()=>nwPos(ans,10));
+        }
+      } else if(diff===2){
+        const up=rand(0,1)===0;
+        const starts=up?[5,15,25,35,45]:[35,45,55,65,75];
+        const s=starts[rand(0,starts.length-1)];
+        const ans=up?s+30:s-30;
+        if(ans<0||ans>100) return buildQ('השלימו:\n'+String.fromCharCode(8594)+' 5 , 15 , 25 , __',35,numOptions,()=>nwPos(35,10));
+        return buildQ('השלימו:\n'+String.fromCharCode(8594)+' '+s+' , '+(up?s+10:s-10)+' , '+(up?s+20:s-20)+' , __',ans,numOptions,()=>nwPos(ans,10));
+      } else {
+        const step=rand(0,1)===0?10:5;
+        const up=rand(0,1)===0;
+        const s=up?rand(2,6)*step:rand(6,12)*step;
+        const ans=up?s+step*3:s-step*3;
+        if(ans<0) return buildQ('השלימו:\n'+String.fromCharCode(8594)+' 2 , 12 , 22 , __',32,numOptions,()=>nwPos(32,5));
+        return buildQ('השלימו:\n'+String.fromCharCode(8594)+' '+s+' , '+(up?s+step:s-step)+' , '+(up?s+step*2:s-step*2)+' , __',ans,numOptions,()=>nwPos(ans,step));
+      }
+    }
+
+    // הכרת המספרים
+    const emojisPool=['⭐','❤️','🍎','🐱','🎈','🍭','🐸','🦋'];
+    const emojiNames={'⭐':'כוכבים','❤️':'לבבות','🍎':'תפוחים','🐱':'חתולים','🎈':'בלונים','🍭':'סוכריות','🐸':'צפרדעים','🦋':'פרפרים'};
+    const em=emojisPool[rand(0,emojisPool.length-1)];
+    const emName=emojiNames[em]||'פריטים';
+    const maxN=diff===1?10:diff===2?15:20;
+    const n=rand(1,maxN);
+    const makeRows=(e,num)=>{
+      if(num<=5) return [e.repeat(num)];
+      if(num<=10) return [e.repeat(5),e.repeat(num-5)];
+      if(num<=15) return [e.repeat(5),e.repeat(5),e.repeat(num-10)];
+      return [e.repeat(5),e.repeat(5),e.repeat(5),e.repeat(num-15)];
+    };
+    const rows=makeRows(em,n);
+    return buildQ('כמה '+emName+' יש?\n[STARS]'+rows.join('[ROW]'),n,numOptions,()=>{let w;do{w=rand(1,maxN);}while(w===n);return w;});
+  }
+
+  if(grade===2){
+    const pos=(c,s)=>{let w;do{w=nw(c,s);}while(w<0);return w;};
+    if(topic.includes('מאוזן')){
+      const noCarry=()=>{const tens=rand(1,8)*10;const units=rand(1,9);const b=rand(1,units);return{a:tens+units,b};};
+      if(diff===1){const type=rand(0,4);if(type===0){const a=rand(2,8)*10,b=rand(1,8)*10;return buildQ(`${a} + ${b}  =`,a+b,numOptions,()=>pos(a+b,10));}if(type===1){const a=rand(2,9)*10,b=rand(1,8);return buildQ(`${a} + ${b}  =`,a+b,numOptions,()=>pos(a+b,5));}if(type===2){const a=rand(3,9)*10,b=rand(1,8)*10;return buildQ(`${a} - ${b}  =`,a-b,numOptions,()=>pos(a-b,10));}if(type===3){const a=rand(2,9)*10,b=rand(1,9);return buildQ(`${a} - ${b}  =`,a-b,numOptions,()=>pos(a-b,5));}const{a,b}=noCarry();return buildQ(`${a} + ${b}  =`,a+b,numOptions,()=>pos(a+b,5));}
+      if(diff===2){const{a,b}=noCarry();const types=[{q:`${a} + ${b}  =`,ans:a+b},{q:`${a+b} - ${b}  =`,ans:a},{q:`__ + ${b}  = ${a+b}`,ans:a},{q:`${a+b} - __  = ${a}`,ans:b}];const t=types[rand(0,types.length-1)];return buildQ(t.q,t.ans,numOptions,()=>pos(t.ans,5));}
+      const{a,b}=noCarry();const types=[{q:`${a} + __  = ${a+b}`,ans:b},{q:`${a+b} - __  = ${a}`,ans:b},{q:`__ - ${b}  = ${a}`,ans:a+b},{q:`__ + ${b}  = ${a+b}`,ans:a}];const t=types[rand(0,types.length-1)];return buildQ(t.q,t.ans,numOptions,()=>pos(t.ans,5));
+    }
+    if(topic.includes('בעיות מילוליות')){
+      const nm=['יעל','עידו','מיכל','נועה','דניאל','שירה','אורי','תמר','רון','ליה'];const n=()=>nm[rand(0,nm.length-1)];
+      if(diff===1){const a=rand(5,20),b=rand(2,a-1),n1=n();const stories=[{t:`ל${n1} היו ${a} בלונים.\n${b} התפוצצו.\nכמה בלונים נשארו?`,a:a-b},{t:`${n1} אסף/ה ${b} כוכבי זהב.\nאז קיבל/ה עוד ${a-b}.\nכמה כוכבים יש?`,a:a},{t:`בכיתה ${a} ילדים.\n${b} נעדרו היום.\nכמה ילדים בכיתה?`,a:a-b}];const s=stories[rand(0,stories.length-1)];return buildQ(s.t,s.a,numOptions,()=>pos(s.a,3));}
+      if(diff===2){const a=rand(15,40),b=rand(5,20),n1=n(),n2=n();const stories=[{t:`לכיתה ${a+b} תלמידים.\n${b} מהם בנות.\nכמה בנים יש?`,a:a},{t:`${n1} קרא/ה ${a} עמודים.\n${n2} קרא/ה ${b} עמודים.\nכמה עמודים בסה"כ?`,a:a+b},{t:`היו ${a+b} ביצים בסל.\n${b} ביצים נשברו.\nכמה ביצים נשארו?`,a:a}];const s=stories[rand(0,stories.length-1)];return buildQ(s.t,s.a,numOptions,()=>pos(s.a,4));}
+      const a=rand(20,60),b=rand(10,30),c=rand(5,15),n1=n();const stories=[{t:`${n1} יש ${a} מדבקות.\nנתן/ה ${b} לחבר ועוד ${c} לאחות.\nכמה מדבקות נשארו?`,a:a-b-c},{t:`בספריה ${a} ספרים.\n${b} הושאלו ו-${c} חזרו.\nכמה ספרים יש עכשיו?`,a:a-b+c}];const s=stories[rand(0,stories.length-1)];return buildQ(s.t,Math.max(1,s.a),numOptions,()=>pos(Math.max(1,s.a),5));
+    }
+    if(topic==='סדרות'||topic.includes('סדרות')){
+      const up=rand(0,1)===0;
+      if(diff===1){const steps=[2,5,10,50,100];const st=steps[rand(0,steps.length-1)];const s=up?rand(1,20)*st:rand(3,10)*st;const a=s,b=up?s+st:s-st,c=up?s+st*2:s-st*2;const ans=up?s+st*3:s-st*3;return buildQ(`השלימו:\n→ ${a} , ${b} , ${c} , __`,ans,numOptions,()=>pos(ans,st));}
+      if(diff===2){const steps=[3,5,10,25];const st=steps[rand(0,steps.length-1)];const s=up?rand(10,50):rand(50,150);const a=s,b=up?s+st:s-st,c=up?s+st*2:s-st*2;const ans=up?s+st*3:s-st*3;return buildQ(`השלימו:\n→ ${a} , ${b} , ${c} , __`,ans,numOptions,()=>pos(ans,st));}
+      const steps=[20,40,60,15,25];const st=steps[rand(0,steps.length-1)];const s=up?rand(1,10)*st:rand(5,15)*st;const hideIdx=rand(1,2);const nums=[s,up?s+st:s-st,up?s+st*2:s-st*2,up?s+st*3:s-st*3];const ans=nums[hideIdx];const display=nums.map((n,i)=>i===hideIdx?'__':String(n)).join(' , ');return buildQ(`השלימו:\n→ ${display}`,ans,numOptions,()=>pos(ans,st));
+    }
+    if(topic.includes('עוקב')){const n=rand(10,500*diff);const q=rand(0,1)===0;return buildQ(`מה המספר ${q?'העוקב':'הקודם'} ל-${n}?`,q?n+1:n-1,numOptions,()=>pos(q?n+1:n-1,2));}
+    if(topic.includes('כפולות')){const b=[0,1,2,10][rand(0,3)];const n=rand(1,10);return buildQ(`${b} × ${n}  =`,b*n,numOptions,()=>pos(b*n,3));}
+    if(topic.includes('ישר')){const st=rand(2,10)*diff;const start=rand(10,80);const hideIdx=rand(1,3);const nums=[start,start+st,start+st*2,start+st*3,start+st*4];const ans=nums[hideIdx];const display=nums.map((n,i)=>i===hideIdx?'[?]':String(n)).join(' , ');return buildQ(`ישר המספרים - מה החסר?\n→ ${display}`,ans,numOptions,()=>{let w;do{w=nwPos(ans,st);}while(nums.includes(w));return w;});}
+    if(topic.includes('הנדסה')){const its=[{q:'כמה צלעות למרובע?',a:'4',w:['3','5','6']},{q:'כמה זוויות ישרות לריבוע?',a:'4',w:['2','1','3']},{q:'איזו צורה עגולה?',a:'מעגל',w:['ריבוע','משולש','מלבן']},{q:'לאיזו צורה יש 3 פינות?',a:'משולש',w:['ריבוע','מלבן','מעגל']},{q:'מה ההבדל בין ריבוע למלבן?',a:'בריבוע כל הצלעות שוות',w:['מלבן גדול יותר','ריבוע עגול יותר','אין הבדל']}];const it=its[rand(0,its.length-1)];return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+  }
+
+  if(grade===3){
+    if(topic.includes('רבבה')){if(diff===3){const a=rand(100,500),b=rand(10,50),c=rand(1,20);const variants=[{l:`${a}+${b}`,lv:a+b,r:`${a+b-c}+${c+c}`,rv:a+b+c},{l:`${a+b}`,lv:a+b,r:`${a}+${b+c}`,rv:a+b+c},{l:`${a+b+c}-${c}`,lv:a+b,r:`${a+b}`,rv:a+b}];const v=variants[rand(0,variants.length-1)];const ans=v.lv>v.rv?'>':v.lv<v.rv?'<':'=';return buildQ(`${v.l}  ___  ${v.r}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}const a=rand(1000,5000*diff),b=rand(100,Math.floor(a/2));if(diff===1){return rand(0,1)===0?buildQ(`${a} + ${b}  =`,a+b,numOptions,()=>nwPos(a+b,100)):buildQ(`__ + ${b}  = ${a+b}`,a,numOptions,()=>nwPos(a,100));}return rand(0,1)===0?buildQ(`${a} + ${b}  =`,a+b,numOptions,()=>nwPos(a+b,100)):buildQ(`${a} - ${b}  =`,a-b,numOptions,()=>nwPos(a-b,100));}
+    if(topic.includes('פי 10')){const n=rand(1,100),f=rand(0,1)===0?10:100;if(diff===3){return buildQ(`${n} × __  = ${n*f}`,f,numOptions,()=>f===10?100:10);}if(diff===2){return buildQ(`__ × ${f}  = ${n*f}`,n,numOptions,()=>nwPos(n,10));}return buildQ(`${n} × ${f}  =`,n*f,numOptions,()=>nwPos(n*f,n*f*0.2));}
+    if(topic.includes('עשרוני')){const h=rand(1,9),t=rand(0,9),u=rand(0,9);const num=h*100+t*10+u;if(diff===1){const type=rand(0,2);if(type===0)return buildQ(`מה ספרת היחידות של ${num}?`,String(u),numOptions,()=>[String(h),String(t),String((u+1)%10)][rand(0,2)]);if(type===1)return buildQ(`מה ספרת העשרות של ${num}?`,String(t),numOptions,()=>[String(h),String(u),String((t+1)%10)][rand(0,2)]);return buildQ(`מה ספרת המאות של ${num}?`,String(h),numOptions,()=>[String(t),String(u),String((h+1)%10)][rand(0,2)]);}if(diff===2){const type=rand(0,2);if(type===0)return buildQ(`כמה יחידות יש ב-${num}?`,String(u),numOptions,()=>[String(t),String(h)][rand(0,1)]);if(type===1)return buildQ(`כמה עשרות יש ב-${num}?`,String(t),numOptions,()=>[String(h),String(u)][rand(0,1)]);return buildQ(`כמה מאות יש ב-${num}?`,String(h),numOptions,()=>[String(t),String(u)][rand(0,1)]);}const digit=rand(1,9);const pos=rand(0,2);const posName=['יחידות','עשרות','מאות'][pos];const makeNum=(d,p)=>{const digits=[rand(1,9),rand(0,9),rand(0,9)];digits[p]=d;return digits[2]*100+digits[1]*10+digits[0];};const correctNum=makeNum(digit,pos);const wrong1=makeNum(rand(0,8),pos);const wrong2=makeNum(rand(0,7),pos);return buildQ(`באיזה מספר הספרה ${digit}\nמייצגת ${posName}?`,String(correctNum),numOptions,()=>rand(0,1)===0?String(wrong1):String(wrong2));}
+    if(topic.includes('לוח הכפל')){const a=rand(2,9),b=rand(2,9);return rand(0,1)===0?buildQ(`${a} × ${b}  =`,a*b,numOptions,()=>nwPos(a*b,Math.max(3,a))):buildQ(`${a*b} ÷ ${b}  =`,a,numOptions,()=>nwPos(a,3));}
+    if(topic.includes('דו שלביות')){const nm=['יעל','עידו','מיכל','נועה','דניאל','שירה','אורי','תמר'];const n=()=>nm[rand(0,nm.length-1)];const a=rand(20,80),b=rand(5,20),c=rand(3,15),n1=n();const stories=[{t:`${n1} קנה/תה ${a} מדבקות.\nנתן/ה ${b} לחבר ועוד ${c} לאחות.\nכמה מדבקות נשארו?`,a:a-b-c},{t:`בספריה ${a} ספרים.\n${b} הושאלו ו-${c} אבדו.\nכמה ספרים נשארו?`,a:a-b-c},{t:`${n1} צבר/ה ${a} נקודות.\nהפסיד/ה ${b} ואז זכה/תה ${c}.\nכמה נקודות יש?`,a:a-b+c}];const s=stories[rand(0,stories.length-1)];return buildQ(s.t,Math.max(1,s.a),numOptions,()=>nwPos(Math.max(1,s.a),5));}
+    if(topic.includes('סדר פעולות')){const a=rand(2,8),b=rand(2,5),c=rand(1,10);return buildQ(`${a} × ${b} + ${c}  =`,a*b+c,numOptions,()=>nwPos(a*b+c,5));}
+    if(topic.includes('ציר')){if(diff===1){const st=rand(0,1)===0?10:100;const s=rand(1,4)*st+rand(0,4)*10;const a=s,b=s+st,c=s+st*2,ans=s+st*3;return buildQ(`השלימו:\n→ ${a} , ${b} , ${c} , __`,ans,numOptions,()=>nwPos(ans,st));}if(diff===2){const up=rand(0,1)===0;const st=rand(1,3)*100;const s=up?rand(1,5)*100:rand(4,9)*100;const a=s,b=up?s+st:s-st,c=up?s+st*2:s-st*2;const ans=up?s+st*3:s-st*3;if(ans<0||ans>900)return buildQ(`השלימו:\n→ ${100} , ${200} , ${300} , __`,400,numOptions,()=>nwPos(400,50));return buildQ(`השלימו:\n→ ${a} , ${b} , ${c} , __`,ans,numOptions,()=>nwPos(ans,st));}const st=rand(1,5)*50;const s=rand(2,5)*st;const nums=[s,s+st,s+st*2,s+st*3];const hideIdx=rand(1,2);const ans=nums[hideIdx];const display=nums.map((n,i)=>i===hideIdx?'__':String(n)).join(' , ');return buildQ(`השלימו:\n→ ${display}`,ans,numOptions,()=>nwPos(ans,st));}
+    if(topic.includes('פילוג')){const a=rand(2,9),b=rand(10,50),c=rand(1,9);return buildQ(`${a} × (${b} + ${c})  =`,a*(b+c),numOptions,()=>nwPos(a*(b+c),10));}
+    if(topic.includes('הנדסה')){const its=[{q:'זווית של 90° נקראת:',a:'ישרה',w:['חדה','קהה','שטוחה']},{q:'זווית קטנה מ-90° נקראת:',a:'חדה',w:['ישרה','קהה','שטוחה']},{q:'זווית גדולה מ-90° נקראת:',a:'קהה',w:['ישרה','חדה','שטוחה']},{q:'משולש עם 3 צלעות שוות:',a:'שווה צלעות',w:['שווה שוקיים','קהה','חד']},{q:'שני קווים בזווית ישרה הם:',a:'מאונכים',w:['מקבילים','חופפים','שווים']},{q:'קווים שלעולם לא נפגשים נקראים:',a:'מקבילים',w:['מאונכים','חופפים','שווים']}];const it=its[rand(0,its.length-1)];return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+  }
+
+  if(grade===4){
+    if(topic.includes('הכרת השבר')){const its=[{q:'החלק העליון של שבר נקרא',a:'מונה',w:['מכנה','שלם','חלק']},{q:'החלק התחתון של שבר נקרא',a:'מכנה',w:['מונה','שלם','חלק']},{q:'בשבר 3/5, המספר 3 הוא ה',a:'מונה',w:['מכנה','שלם','חלק']},{q:'בשבר 3/5, המספר 5 הוא ה',a:'מכנה',w:['מונה','שלם','חלק']},{q:'שבר שהמונה גדול מהמכנה נקרא',a:'שבר מדומה',w:['שבר פשוט','מספר מעורב','שבר שלם']},{q:'1/2 + 1/2 שווה ל',a:'1',w:['2','1/4','2/2']},{q:'3/4 מייצג',a:'3 חלקים מתוך 4',w:['4 חלקים מתוך 3','3 פחות 4','3 כפול 4']},{q:'איזה שבר גדול יותר: 1/2 או 1/4',a:'1/2',w:['1/4','שווים','תלוי']}];const it=its[rand(0,its.length-1)];return buildQ(it.q+':',it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+    if(topic.includes('מכנים זהים')&&!topic.includes('שונים')){const d=rand(4,10),n1=rand(1,d-1),n2=rand(1,d-1);const ans=n1>n2?'>':n1<n2?'<':'=';return buildQ(`${n1}/${d}  ___  ${n2}/${d}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}
+    if(topic.includes('מכנים שונים')&&!topic.includes('חיבור')){const d1=rand(2,5);const d2=d1+rand(1,4);const n1=rand(1,d1-1),n2=rand(1,d2-1);const v1=n1/d1,v2=n2/d2;const ans=v1>v2?'>':v1<v2?'<':'=';return buildQ(`${n1}/${d1}  ___  ${n2}/${d2}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}
+    if(topic.includes('מכנה משותף')){const d=rand(4,10),n1=rand(1,d-2),n2=rand(1,d-n1-1);return rand(0,1)===0?buildQ(`${n1}/${d} + ${n2}/${d}  =`,`${n1+n2}/${d}`,numOptions,()=>[`${n1+n2+1}/${d}`,`${n1+n2}/${d+1}`][rand(0,1)]):buildQ(`${n1+n2}/${d} - ${n2}/${d}  =`,`${n1}/${d}`,numOptions,()=>[`${n1+1}/${d}`,`${n2}/${d}`][rand(0,1)]);}
+    if(topic==='כפל'){if(diff===3){const a=rand(2,9),b=rand(2,9),c=rand(1,3);const variants=[{l:`${a}×${b}`,lv:a*b,r:`${a}×${b+c}`,rv:a*(b+c)},{l:`${a+c}×${b}`,lv:(a+c)*b,r:`${a}×${b}`,rv:a*b}];const v=variants[rand(0,variants.length-1)];const ans=v.lv>v.rv?'>':v.lv<v.rv?'<':'=';return buildQ(`${v.l}  ___  ${v.r}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}const a=rand(10,99*diff),b=rand(2,9);return buildQ(`${a} × ${b}  =`,a*b,numOptions,()=>nwPos(a*b,a));}
+    if(topic==='חילוק'){const b=rand(2,9),a=rand(2,20)*b;return buildQ(`${a} ÷ ${b}  =`,a/b,numOptions,()=>nwPos(a/b,3));}
+    if(topic.includes('אומדן')){const a=rand(20,90),b=rand(20,90);const r=(Math.round(a/10)*10)+(Math.round(b/10)*10);return buildQ(`אומדן של ${a}+${b}?\n(עגל לעשרות)`,r,numOptions,()=>nwPos(r,10));}
+    if(topic.includes('ראשוני')){const p=[2,3,5,7,11,13,17,19],c=[4,6,8,9,10,12,14,15];const ip=rand(0,1)===0;const n=ip?p[rand(0,p.length-1)]:c[rand(0,c.length-1)];return buildQ(`המספר ${n} הוא:`,ip?'ראשוני':'פריק',2,()=>ip?'פריק':'ראשוני');}
+    if(topic.includes('בעיות מילוליות')){const nm=['יעל','עידו','מיכל','נועה','דניאל','שירה'];const n=()=>nm[rand(0,nm.length-1)];const a=rand(5,20),b=rand(2,9),n1=n();const stories=[{t:`${n1} קנה/תה ${b} קופסאות.\nבכל קופסה ${a} שוקולדים.\nכמה שוקולדים בסה"כ?`,a:a*b},{t:`בכיתה ${b} שורות.\nבכל שורה ${a} כיסאות.\nכמה כיסאות בסה"כ?`,a:a*b},{t:`${b} חברים הלכו לקולנוע.\nכל כרטיס עולה ${a} שקל.\nכמה שילמו בסה"כ?`,a:a*b}];const s=stories[rand(0,stories.length-1)];return buildQ(s.t,s.a,numOptions,()=>nwPos(s.a,a));}
+    if(topic.includes('הנדסה')){const its=[{q:'שטח ריבוע עם צלע 6:',a:'36',w:['24','12','30']},{q:'היקף ריבוע עם צלע 5:',a:'20',w:['10','25','15']},{q:'שטח מלבן 8×3:',a:'24',w:['22','11','32']},{q:'כמה אלכסונים למרובע?',a:'2',w:['1','3','4']},{q:'היקף מלבן עם אורך 6 ורוחב 4:',a:'20',w:['24','12','10']}];const it=its[rand(0,its.length-1)];return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+  }
+
+  if(grade===5){
+    if(topic.includes('השוואה בין שברים')){const d1=rand(2,6);const d2tmp=rand(2,6);const d2=d2tmp===d1?d2tmp+1:d2tmp;const n1=rand(1,d1-1),n2=rand(1,d2-1);const v1=n1/d1,v2=n2/d2;const ans=v1>v2?'>':v1<v2?'<':'=';return buildQ(`${n1}/${d1}  ___  ${n2}/${d2}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}
+    if(topic.includes('מעורב')){const w=rand(1,4),n=rand(1,5),d=rand(2,6),imp=w*d+n;return rand(0,1)===0?buildQ(`הפוך לשבר מדומה:\n${w} ו-${n}/${d}`,`${imp}/${d}`,numOptions,()=>`${imp+1}/${d}`):buildQ(`הפוך למספר מעורב:\n${imp}/${d}`,`${w} ו-${n}/${d}`,numOptions,()=>`${w+1} ו-${n}/${d}`);}
+    if(topic.includes('הרחבה')){const n=rand(1,4),d=rand(2,5),f=rand(2,4);return rand(0,1)===0?buildQ(`הרחב ${n}/${d} פי ${f}:`,`${n*f}/${d*f}`,numOptions,()=>`${n*f+1}/${d*f}`):buildQ(`צמצם ${n*f}/${d*f}:`,`${n}/${d}`,numOptions,()=>`${n+1}/${d}`);}
+    if(topic.includes('מכנים שונים')){const d1=rand(2,4);const d2tmp=rand(2,4);const d2=d2tmp===d1?d2tmp+1:d2tmp;const n1=rand(1,d1-1),n2=rand(1,d2-1),lcd=d1*d2,sn=n1*d2+n2*d1;return buildQ(`${n1}/${d1} + ${n2}/${d2}  =`,`${sn}/${lcd}`,numOptions,()=>[`${sn+1}/${lcd}`,`${sn}/${lcd+1}`][rand(0,1)]);}
+    if(topic.includes('עשרוני')&&topic.includes('שבר')){const pairs=[[2,0.5],[4,0.25],[5,0.2],[10,0.1]];const[d,v]=pairs[rand(0,3)];const n=rand(1,d-1);const res=(n*v).toFixed(2).replace(/0+$/,'').replace(/\.$/,'');return buildQ(`${n}/${d}  =`,res,numOptions,()=>String((parseFloat(res)+0.1).toFixed(2)));}
+    if(topic.includes('חיבור וחיסור מספרים עשרוניים')){const a=(rand(1,9*diff)/10).toFixed(1),b=(rand(1,9*diff)/10).toFixed(1);return buildQ(`${a} + ${b}  =`,(parseFloat(a)+parseFloat(b)).toFixed(1),numOptions,()=>((parseFloat(a)+parseFloat(b)+0.1).toFixed(1)));}
+    if(topic.includes('השוואת מספרים עשרוניים')){if(diff===3){const a=(rand(1,9)/10).toFixed(1),b=(rand(1,9)/10).toFixed(1),c=(rand(1,5)/10).toFixed(1);const lv=parseFloat(a)+parseFloat(b);const rv=parseFloat(a)+parseFloat(c);const ans=lv>rv?'>':lv<rv?'<':'=';return buildQ(`${a}+${b}  ___  ${a}+${c}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}const a=(rand(1,9)/10).toFixed(1),b=(rand(1,9)/10).toFixed(1);const ans=parseFloat(a)>parseFloat(b)?'>':parseFloat(a)<parseFloat(b)?'<':'=';return buildQ(`${a}  ___  ${b}`,ans,3,()=>['<','>','='].filter(x=>x!==ans)[rand(0,1)]);}
+    if(topic.includes('חילוק דו')){const b=rand(10,20),a=b*rand(2,9);return buildQ(`${a} ÷ ${b}  =`,a/b,numOptions,()=>nwPos(a/b,3));}
+    if(topic.includes('התחלקות')){const its=[{q:'246 מתחלק ב-2 כי:',a:'הוא זוגי',w:['מסתיים ב-5','מסתיים ב-0']},{q:'350 מתחלק ב-10 כי:',a:'מסתיים ב-0',w:['הוא זוגי','מסתיים ב-5']},{q:'425 מתחלק ב-5 כי:',a:'מסתיים ב-5',w:['הוא זוגי','מסתיים ב-0']}];const it=its[rand(0,2)];return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+    if(topic.includes('ממוצע')){const ns=[rand(10,30),rand(10,30),rand(10,30)];const avg=Math.round(ns.reduce((a,b)=>a+b,0)/3);return buildQ(`ממוצע של:\n${ns.join(', ')}?`,avg,numOptions,()=>nwPos(avg,5));}
+    if(topic.includes('הנדסה')||topic.includes('היקף')||topic.includes('סכום')||topic.includes('תכונות')){const its=[{q:'סכום הזוויות במשולש:',a:'180°',w:['90°','270°','360°']},{q:'שטח משולש בסיס 6 גובה 4:',a:'12',w:['24','10','18']},{q:'היקף משולש שווה צלעות עם צלע 7:',a:'21',w:['14','28','49']},{q:'כמה זוגות צלעות מקבילות יש לטרפז?',a:'1',w:['0','2','4']}];const it=its[rand(0,its.length-1)];return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+  }
+
+  if(grade===6){
+    if(topic.includes('כפל שברים')){const n1=rand(1,5),d1=rand(2,6),n2=rand(1,5),d2=rand(2,6);const rn=n1*n2,rd=d1*d2;return buildQ(`${n1}/${d1} × ${n2}/${d2}  =`,`${rn}/${rd}`,numOptions,()=>[`${rn+1}/${rd}`,`${rn}/${rd+1}`][rand(0,1)]);}
+    if(topic.includes('חילוק שברים')){const n1=rand(1,5),d1=rand(2,6),n2=rand(1,5),d2=rand(2,6);const rn=n1*d2,rd=d1*n2;return buildQ(`${n1}/${d1} ÷ ${n2}/${d2}  =`,`${rn}/${rd}`,numOptions,()=>[`${rn+1}/${rd}`,`${rn}/${rd+1}`][rand(0,1)]);}
+    if(topic.includes('חיסור שברים')){const whole=rand(2,5);const d=rand(2,6);const n_frac=rand(1,d-1);const n_sub=rand(n_frac+1,d-1);const num_ans=d+n_frac-n_sub;const whole_ans=whole-1;let ans;if(num_ans===0)ans=String(whole_ans);else if(num_ans===d)ans=String(whole_ans+1);else ans=whole_ans>0?`${whole_ans} ו-${num_ans}/${d}`:`${num_ans}/${d}`;const wrongs=[whole_ans>0?`${whole_ans} ו-${num_ans+1}/${d}`:`${num_ans+1}/${d}`,whole_ans>0?`${whole_ans+1} ו-${num_ans}/${d}`:`${num_ans}/${d}`];return buildQ(`${whole} ו-${n_frac}/${d} - ${n_sub}/${d}  =\n(פרוט את ה-${whole})`,ans,numOptions,()=>wrongs[rand(0,wrongs.length-1)]);}
+    if(topic.includes('כפל וחילוק מספרים עשרוניים')){const a=(rand(1,9)/10).toFixed(1),b=rand(2,9);return rand(0,1)===0?buildQ(`${a} × ${b}  =`,(parseFloat(a)*b).toFixed(1),numOptions,()=>((parseFloat(a)*b+0.1).toFixed(1))):buildQ(`${(parseFloat(a)*b).toFixed(1)} ÷ ${b}  =`,a,numOptions,()=>String((parseFloat(a)+0.1).toFixed(1)));}
+    if(topic.includes('אחוזים')){const base=[100,200,50,400][rand(0,3)];const pct=[10,20,25,50,5,15,30,75][rand(0,diff===1?3:7)];return buildQ(`${pct}% מ-${base}  =`,base*pct/100,numOptions,()=>nwPos(base*pct/100,base*0.1));}
+    if(topic.includes('חלק מכמות')){const tot=rand(20,100),fn=rand(1,4),fd=rand(2,5);const v=Math.round(tot*fn/fd);return buildQ(`${fn}/${fd} מתוך ${tot}  =`,v,numOptions,()=>nwPos(v,5));}
+    if(topic.includes('חציון')){const ns=[rand(5,20),rand(5,20),rand(5,20),rand(5,20),rand(5,20)].sort((a,b)=>a-b);return buildQ(`חציון של:\n${ns.join(', ')}?`,ns[2],numOptions,()=>ns[rand(0,4)]);}
+    if(topic.includes('מעגל')){const r=rand(2,8);const its=[{q:`היקף מעגל רדיוס ${r} (π≈3):`,a:r*6,w:[r*3,r*6+3,r*2*3+1]},{q:`קוטר מעגל עם רדיוס ${r}:`,a:r*2,w:[r,r*3,r*2+1]},{q:`שטח מעגל רדיוס ${r} (π≈3):`,a:r*r*3,w:[r*r,r*2*3,r*r*3+3]}];const it=its[rand(0,2)];return buildQ(it.q,String(it.a),numOptions,()=>String(it.w[rand(0,it.w.length-1)]));}
+    if(topic.includes('הנדסה')||topic.includes('נפח')){const its=[{q:'נפח תיבה 3×4×5:',a:'60',w:['20','47','35']},{q:'שטח פנים קוביה עם צלע 3:',a:'54',w:['27','9','36']},{q:'גוף עם 2 בסיסים זהים ומקבילים:',a:'מנסרה',w:['פירמידה','קוביה','כדור']}];const it=its[rand(0,2)];return buildQ(it.q,it.a,numOptions,()=>it.w[rand(0,it.w.length-1)]);}
+    if(topic.includes('בעיות מילוליות')){const nm=['יעל','עידו','מיכל','נועה','דניאל','שירה'];const n=()=>nm[rand(0,nm.length-1)];const n1=n();const a=(rand(1,9)/10).toFixed(1),b=(rand(1,9)/10).toFixed(1);const stories=[{t:`${n1} קנה/תה ${a} ק"מ תפוחים\nו-${b} ק"ג ענבים.\nכמה ק"ג בסה"כ?`,a:(parseFloat(a)+parseFloat(b)).toFixed(1)},{t:`חוט באורך ${(parseFloat(a)+parseFloat(b)).toFixed(1)} מטר.\nנחתך חלק של ${b} מטר.\nכמה נשאר?`,a:a}];const s=stories[rand(0,stories.length-1)];return buildQ(s.t,s.a,numOptions,()=>String((parseFloat(s.a)+0.1).toFixed(1)));}
+  }
+
+  if(grade===7){
+    if(topic.includes('שליליים')){const a=rand(-10,10)*diff,b=rand(-10,10)*diff;const op=['+','-'][rand(0,1)];return buildQ(`${a} ${op} ${b}  =`,op==='+'?a+b:a-b,numOptions,()=>nw(op==='+'?a+b:a-b,3));}
+    if(topic.includes('ביטויים')){const a=rand(1,5),b=rand(1,10),x=rand(1,6);return buildQ(`אם x=${x}\nמהו ${a}x + ${b}?`,a*x+b,numOptions,()=>nw(a*x+b,5));}
+    if(topic.includes('משוואות')){const x=rand(1,10*diff),b=rand(1,20);const ops=[{t:`x + ${b} = ${x+b}`,a:x},{t:`2x = ${2*x}`,a:x},{t:`3x = ${3*x}`,a:x},{t:`x - ${b} = ${x-b}`,a:x}];const q=ops[rand(0,ops.length-1)];return buildQ(`פתור:\n${q.t}`,q.a,numOptions,()=>nw(q.a,3));}
+    if(topic.includes('חזקות')){const b=rand(2,3+diff),e=rand(2,3+diff);return buildQ(`${b}^${e}  =`,Math.pow(b,e),numOptions,()=>nw(Math.pow(b,e),Math.max(3,Math.floor(Math.pow(b,e)*0.3))));}
+    if(topic.includes('מילוליות')){const x=rand(3,10),b=rand(5,20);return buildQ(`לאורן פי ${x} יותר ממיה.\nלמיה יש ${b} ₪. כמה לאורן?`,x*b,numOptions,()=>nw(x*b,b));}
+  }
+
+  const a=rand(2,20*diff),b=rand(2,10);
+  return buildQ(`${a} × ${b}  =`,a*b,numOptions,()=>nw(a*b,a));
+}
+
+// =============================================================
+// ⚠️ generateQuestions — אל תשנו את הפונקציה הזו!
+// =============================================================
+function generateQuestions(grade,topicIndex,level,numOptions){
+  const qs=[];const usedKeys=new Set();let attempts=0;const maxAttempts=500;
+  const strictByAnswer=(grade===1);
+  while(qs.length<QUESTIONS_PER_QUIZ&&attempts<maxAttempts){
+    attempts++;const q=makeQuestion(grade,topicIndex,level,numOptions);if(!q)continue;
+    const key=q._targetKey?q._targetKey:strictByAnswer?q.correctStr:q.text.trim()+'§'+q.correctStr;
+    if(!usedKeys.has(key)){usedKeys.add(key);qs.push(q);}
+  }
+  if(qs.length<QUESTIONS_PER_QUIZ){let extra=0;while(qs.length<QUESTIONS_PER_QUIZ&&extra<200){extra++;const q=makeQuestion(grade,topicIndex,level,numOptions);if(q)qs.push(q);}}
+  return qs;
+}
+
+let state={currentUser:null,isTeacher:false,selectedGrade:null,selectedTopic:null,selectedLevel:null,
+  quiz:{questions:[],currentIndex:0,score:0,answered:false}};
+
+function getStorage(k,fb=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch{return fb;}}
+function setStorage(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function getUsers(){return getStorage('mkb_users',{});}
+function saveUsers(u){setStorage('mkb_users',u);}
+function getScores(){return getStorage('mkb_scores',{});}
+function saveScores(s){setStorage('mkb_scores',s);}
+function getSavedName(){return getStorage('mkb_saved_name',null);}
+function saveCurrentName(n){setStorage('mkb_saved_name',n);}
+
+async function syncOnline(){ /* Firebase handles sync */ }
+async function pushOnline(){ /* Firebase handles push */ }
+
+window.onload=function(){
+  const s=getSavedName();
+  if(s&&s.length>=2){
+    state.currentUser=s;state.isTeacher=false;
+    showAppScreen();
+  }
+};
+
+function showTeacherLogin(){document.getElementById('student-login-card').style.display='none';document.getElementById('teacher-login-card').style.display='flex';}
+function showStudentLogin(){document.getElementById('teacher-login-card').style.display='none';document.getElementById('student-login-card').style.display='flex';}
+
+async function studentLogin(){
+  const ni=document.getElementById('student-name-input');
+  const name=ni.value.trim();
+  const err=document.getElementById('name-error');
+  err.textContent='';
+  if(!name){err.textContent='נא להכניס שם';return;}
+  if(name.length<2){err.textContent='השם קצר מדי';return;}
+  err.textContent='⏳ מתחבר...';
+  try{
+    const userData=await fbGet('users',name);
+    if(userData&&userData.status==='blocked'){err.textContent='❌ הגישה חסומה. פנה/י למורה.';return;}
+    state.currentUser=name;saveCurrentName(name);
+    const us=getUsers();if(!us[name])us[name]={name,joinedAt:new Date().toISOString()};saveUsers(us);
+    if(!userData){
+      await fbSet('users',name,{name,status:'pending',joinedAt:new Date().toISOString(),totalScore:0});
+      showPendingScreen();
+    } else if(userData.status==='approved'){
+      showAppScreen();
+    } else {
+      showPendingScreen();
+    }
+  }catch(e){
+    err.textContent='';
+    // fallback אם Firebase לא עובד
+    state.currentUser=name;saveCurrentName(name);
+    const us=getUsers();if(!us[name])us[name]={name,joinedAt:new Date().toISOString()};saveUsers(us);
+    showAppScreen();
+  }
+}
+
+function teacherLogin(){const pass=document.getElementById('teacher-pass-input').value;const err=document.getElementById('teacher-error');if(pass!==TEACHER_PASS){err.textContent='סיסמה שגויה';return;}state.currentUser='מורה';state.isTeacher=true;showTeacherScreen();}
+function logout(){state.currentUser=null;state.isTeacher=false;showScreen('login-screen');document.getElementById('teacher-login-card').style.display='none';document.getElementById('student-login-card').style.display='flex';document.getElementById('teacher-pass-input').value='';document.getElementById('teacher-error').textContent='';}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
+function showAppScreen(){document.getElementById('header-name').textContent=state.currentUser;document.getElementById('header-avatar').textContent=state.currentUser[0].toUpperCase();showScreen('app-screen');showTab('grades');showGrades();}
+function showTeacherScreen(){
+  showScreen('teacher-screen');
+  renderTeacherTable();
+  // רענון אוטומטי כל 30 שניות
+  if(window._teacherRefresh) clearInterval(window._teacherRefresh);
+  window._teacherRefresh=setInterval(function(){
+    if(document.getElementById('teacher-screen').classList.contains('active')){
+      renderTeacherTable();
+    } else {
+      clearInterval(window._teacherRefresh);
+    }
+  }, 30000);
+}
+function showTab(tab){document.querySelectorAll('.nav-tab').forEach((t,i)=>{t.classList.toggle('active',(i===0&&tab==='grades')||(i===1&&tab==='leaderboard'));});document.getElementById('tab-grades').style.display=tab==='grades'?'block':'none';document.getElementById('tab-leaderboard').style.display=tab==='leaderboard'?'block':'none';if(tab==='leaderboard'){syncOnline().then(()=>renderLeaderboard());}}
+
+function showGrades(){
+  document.getElementById('view-grades').style.display='block';document.getElementById('view-topics').style.display='none';document.getElementById('view-levels').style.display='none';
+  const grid=document.getElementById('grade-grid');grid.innerHTML='';const scores=getScores();const myScores=scores[state.currentUser]||{};
+  Object.entries(CURRICULUM).forEach(([grade,data])=>{const g=parseInt(grade);const total=Object.values(myScores).filter(s=>s.grade===g).reduce((a,s)=>a+s.score,0);const card=document.createElement('div');card.className='grade-card';card.innerHTML=`<div class="grade-emoji">${data.emoji}</div><div class="grade-label">${data.name}</div><div class="grade-score">⭐ ${total}</div>`;card.onclick=()=>showTopicsForGrade(g);grid.appendChild(card);});
+}
+
+function showTopicsForGrade(grade){
+  state.selectedGrade=grade;document.getElementById('view-grades').style.display='none';document.getElementById('view-topics').style.display='block';document.getElementById('view-levels').style.display='none';
+  const data=CURRICULUM[grade];document.getElementById('topics-title').textContent=`${data.emoji} ${data.name} – בחר/י נושא`;
+  const scores=getScores();const myScores=scores[state.currentUser]||{};const list=document.getElementById('topic-list');list.innerHTML='';
+  data.topics.forEach((topic,i)=>{const key=`${grade}_${i}`;const topicLevel=myScores[key]?myScores[key].level:null;const levelStars=topicLevel==='challenge'?'⭐⭐⭐':topicLevel==='advanced'?'⭐⭐':topicLevel==='basic'?'⭐':'';const card=document.createElement('div');card.className='topic-card';card.innerHTML=`<div class="topic-name">${topic}</div><div class="topic-stars">${levelStars||'—'}</div>`;card.onclick=()=>showLevels(i,topic);list.appendChild(card);});
+}
+
+function showTopics(){document.getElementById('view-topics').style.display='block';document.getElementById('view-levels').style.display='none';}
+function showLevels(topicIndex,topicName){state.selectedTopic=topicIndex;document.getElementById('view-topics').style.display='none';document.getElementById('view-levels').style.display='block';document.getElementById('levels-title').textContent=`📘 ${topicName}`;}
+function getNumOptions(grade){return grade<=3?3:4;}
+
+function startQuiz(level){
+  state.selectedLevel=level;const q=generateQuestions(state.selectedGrade,state.selectedTopic,level,getNumOptions(state.selectedGrade));
+  state.quiz={questions:q,currentIndex:0,score:0,answered:false};showScreen('quiz-screen');renderQuestion();
+}
+
+function fracHTML(text){
+  if(!text)return'';
+  if(text.includes('[STARS]')){
+    const hasNewline=text.includes('\n');
+    if(hasNewline){const parts=text.split('\n');const title=parts[0];const starsRaw=parts[1].replace('[STARS]','');const rows=starsRaw.split('[ROW]').filter(r=>r!=='___');const starsHTML=rows.map(r=>`<div class="star-row">${r}</div>`).join('');return`<span class="hebrew-line">${title}</span><div class="stars-block">${starsHTML}</div>`;}
+    else{const starsRaw=text.replace('[STARS]','');const parts=starsRaw.split('[ROW]');const rows=parts.filter(r=>r!=='___');const starsHTML=rows.map(r=>`<div class="star-row">${r}</div>`).join('');return`<div class="stars-block">${starsHTML}</div>`;}
+  }
+  const lines=text.split('\n');
+  const processed=lines.map(line=>{
+    if(line.startsWith('→ ')){const seq=line.substring(2);const highlighted=seq.replace(/\[\?\]/g,'<span style="color:var(--pink);font-weight:900">[?]</span>');return`<span class="seq-ltr">${highlighted}</span>`;}
+    const isHebrew=/^[\u05D0-\u05EA\(]/.test(line.trim());
+    if(isHebrew){let l=line.replace(/(\d+)\s+ו-(\d+)\/(\d+)/g,(m,w,n,d)=>`<span class="mixed-num"><span class="whole-part">${w}</span><span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span></span>`);l=l.replace(/(\d+)\/(\d+)/g,(m,n,d)=>`<span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span>`);return l;}
+    let l=line.replace(/(\d+)\s+ו-(\d+)\/(\d+)/g,(m,w,n,d)=>`<span class="mixed-num"><span class="whole-part">${w}</span><span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span></span>`);l=l.replace(/(\d+)\/(\d+)/g,(m,n,d)=>`<span class="frac"><span class="num">${n}</span><span class="den">${d}</span></span>`);return`<span class="math-line">${l}</span>`;
+  });
+  return processed.join('<br>');
+}
+
+function renderQuestion(){
+  const q=state.quiz.questions[state.quiz.currentIndex];const idx=state.quiz.currentIndex;
+  document.getElementById('quiz-info').textContent=`שאלה ${idx+1} מתוך ${QUESTIONS_PER_QUIZ}`;
+  document.getElementById('quiz-score-live').textContent=state.quiz.score;
+  document.getElementById('question-num').textContent=`${idx+1}/${QUESTIONS_PER_QUIZ}`;
+  document.getElementById('question-text').innerHTML=fracHTML(q.text);
+  document.getElementById('feedback-msg').textContent='';document.getElementById('next-btn').style.display='none';state.quiz.answered=false;
+  const grid=document.getElementById('answers-grid');grid.innerHTML='';
+  const hasStarOptions=q.options.some(o=>o.includes('[STARS]'));
+  grid.style.gridTemplateColumns=hasStarOptions?'repeat(3,1fr)':q.options.length===3?'repeat(3,1fr)':'repeat(2,1fr)';
+  grid.style.alignItems=hasStarOptions?'start':'stretch';
+  q.options.forEach(opt=>{const btn=document.createElement('button');btn.className='answer-btn';btn.innerHTML=fracHTML(opt);btn.dataset.value=opt;btn.onclick=()=>{btn.blur();checkAnswer(opt,q,btn);};grid.appendChild(btn);});
+}
+
+function checkAnswer(selected,q,btn){
+  if(state.quiz.answered)return;state.quiz.answered=true;const correct=q.correctStr;const isCorrect=selected===correct;
+  document.querySelectorAll('.answer-btn').forEach(b=>{b.disabled=true;if(b.dataset.value===correct)b.classList.add('correct');});
+  const fe=document.getElementById('feedback-msg');
+  if(isCorrect){btn.classList.add('correct');const pts={basic:5,advanced:8,challenge:10}[state.selectedLevel];state.quiz.score+=pts;fe.textContent=['✅ מצוין!','🎉 כל הכבוד!','⭐ נכון!'][rand(0,2)];fe.className='feedback-msg feedback-correct pop';document.getElementById('quiz-score-live').textContent=state.quiz.score;setTimeout(()=>nextQuestion(),1500);}
+  else{btn.classList.add('wrong');fe.innerHTML=`❌ הפתרון הנכון: ${fracHTML(correct)}`;fe.className='feedback-msg feedback-wrong shake';document.getElementById('next-btn').style.display='inline-block';}
+}
+
+function nextQuestion(){state.quiz.currentIndex++;if(state.quiz.currentIndex>=QUESTIONS_PER_QUIZ)finishQuiz();else renderQuestion();}
+
+function finishQuiz(){
+  const score=state.quiz.score;const max=QUESTIONS_PER_QUIZ*{basic:5,advanced:8,challenge:10}[state.selectedLevel];const pct=Math.round((score/max)*100);
+  const scores=getScores();if(!scores[state.currentUser])scores[state.currentUser]={};
+  const key=`${state.selectedGrade}_${state.selectedTopic}`;const prev=scores[state.currentUser][key];
+  if(!prev||score>prev.score){scores[state.currentUser][key]={score,grade:state.selectedGrade,topic:state.selectedTopic,level:state.selectedLevel,date:new Date().toISOString()};saveScores(scores);}
+  const totals=getStorage('mkb_totals',{});if(!totals[state.currentUser])totals[state.currentUser]=0;totals[state.currentUser]+=score;setStorage('mkb_totals',totals);
+  // שמור ב-Firebase
+  fbSet('scores',state.currentUser,scores[state.currentUser]||{}).catch(()=>{});
+  fbSet('users',state.currentUser,{totalScore:totals[state.currentUser]||0,lastActive:new Date().toISOString(),status:'approved'}).catch(()=>{});
+  document.getElementById('results-emoji').textContent=pct>=90?'🏆':pct>=70?'🎉':pct>=50?'👍':'💪';
+  document.getElementById('results-score-text').textContent=`${score} / ${max}`;
+  document.getElementById('results-sub').textContent=`${pct}% – ${pct>=90?'מושלם! אלוף/ת!':pct>=70?'כל הכבוד!':pct>=50?'יפה, אפשר להשתפר!':'תנסה שוב!'}`;
+  const nextBtn=document.getElementById('next-level-btn');
+  if(state.selectedLevel==='basic'){nextBtn.style.display='block';nextBtn.textContent='מתקדם ⚡';}
+  else if(state.selectedLevel==='advanced'){nextBtn.style.display='block';nextBtn.textContent='אתגרי 🔥';}
+  else{nextBtn.style.display='block';nextBtn.textContent='נושא הבא 📚';}
+  showScreen('results-screen');
+}
+
+function goNextLevel(){if(state.selectedLevel==='basic'){startQuiz('advanced');}else if(state.selectedLevel==='advanced'){startQuiz('challenge');}else{showScreen('app-screen');showTopicsForGrade(state.selectedGrade);showTab('grades');}}
+function quitQuiz(){showScreen('app-screen');showTab('grades');}
+function tryAgain(){startQuiz(state.selectedLevel);}
+function goHome(){showScreen('app-screen');showGrades();showTab('grades');}
+
+function renderLeaderboard(){
+  const totals=getStorage('mkb_totals',{});
+  const rows=Object.entries(totals).map(([name,score])=>({name,score})).sort((a,b)=>b.score-a.score);
+  const tbody=document.getElementById('leaderboard-body');tbody.innerHTML='';
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="4" class="empty-state">עדיין אין ניקוד. התחל/י לשחק!</td></tr>';return;}
+  rows.forEach((row,i)=>{const rank=i+1;const isMe=row.name===state.currentUser;const rc=rank===1?'rank-1':rank===2?'rank-2':rank===3?'rank-3':'rank-other';const tr=document.createElement('tr');if(isMe)tr.className='me-row';tr.innerHTML=`<td><span class="rank-badge ${rc}">${rank}</span></td><td>${row.name}${isMe?' 👈':''}</td><td><span class="grade-pill">${getUserGrade(row.name)}</span></td><td class="player-score">⭐ ${row.score}</td>`;tbody.appendChild(tr);});
+}
+
+function getUserGrade(name){const scores=getScores();const ms=scores[name];if(!ms)return'–';const grades=Object.values(ms).map(s=>s.grade);if(!grades.length)return'–';const counts={};grades.forEach(g=>counts[g]=(counts[g]||0)+1);const top=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];return CURRICULUM[top]?.name||'–';}
+
+async function renderTeacherTable(){
+  const tbody=document.getElementById('teacher-students-body');
+  const pendingBody=document.getElementById('pending-body');
+  if(tbody) tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:#bbb;padding:20px">טוען...</td></tr>';
+  try{
+    const allUsers=await fbAll('users');
+    if(pendingBody){
+      pendingBody.innerHTML='';
+      const pending=Object.entries(allUsers).filter(function(e){return e[1].status==='pending';});
+      if(!pending.length){
+        pendingBody.innerHTML='<tr><td colspan="3" class="empty-state">אין בקשות ממתינות</td></tr>';
+      } else {
+        pending.forEach(function(e){
+          var name=e[0];
+          var tr=document.createElement('tr');
+          var td1=document.createElement('td');td1.textContent=name;
+          var td2=document.createElement('td');td2.style.fontSize='0.8rem';td2.style.color='#999';
+          var td3=document.createElement('td');
+          var btn1=document.createElement('button');btn1.className='approve-btn';btn1.textContent='אשר';
+          btn1.onclick=function(){approveStudent(name);};
+          var btn2=document.createElement('button');btn2.className='action-btn';btn2.textContent='דחה';
+          btn2.onclick=function(){blockStudent(name);};
+          td3.appendChild(btn1);td3.appendChild(btn2);
+          tr.appendChild(td1);tr.appendChild(td2);tr.appendChild(td3);
+          pendingBody.appendChild(tr);
+        });
+      }
+    }
+    if(tbody){
+      tbody.innerHTML='';
+      const approved=Object.entries(allUsers).filter(function(e){return e[1].status==='approved';});
+      if(!approved.length){
+        tbody.innerHTML='<tr><td colspan="4" class="empty-state">אין תלמידים מאושרים עדיין</td></tr>';
+        return;
+      }
+      approved.sort(function(a,b){return (b[1].totalScore||0)-(a[1].totalScore||0);}).forEach(function(e){
+        var name=e[0];var u=e[1];
+        var total=u.totalScore||0;
+        var tr=document.createElement('tr');
+        var td1=document.createElement('td');td1.textContent=name;
+        var td2=document.createElement('td');
+        var pill=document.createElement('span');pill.className='grade-pill';pill.textContent=getUserGrade(name);
+        td2.appendChild(pill);
+        var td3=document.createElement('td');td3.textContent='⭐ '+total;
+        var td4=document.createElement('td');
+        var btn=document.createElement('button');btn.className='action-btn';btn.textContent='מחק';
+        btn.onclick=function(){deleteStudent(name);};
+        td4.appendChild(btn);
+        tr.appendChild(td1);tr.appendChild(td2);tr.appendChild(td3);tr.appendChild(td4);
+        tbody.appendChild(tr);
+      });
+    }
+  }catch(e){if(tbody)tbody.innerHTML='<tr><td colspan="4" class="empty-state">שגיאה בטעינה</td></tr>';}
+}
+async function approveStudent(name){
+  await fbSet('users',name,{status:'approved'});
+  const us=getUsers();if(!us[name])us[name]={name,joinedAt:new Date().toISOString()};saveUsers(us);
+  renderTeacherTable();
+}
+async function blockStudent(name){await fbSet('users',name,{status:'blocked'});renderTeacherTable();}
+
+async function deleteStudent(name){
+  if(!confirm('למחוק את '+name+'?'))return;
+  await fbDel('users',name);await fbDel('scores',name);
+  const users=getUsers(),scores=getScores(),totals=getStorage('mkb_totals',{});
+  delete users[name];delete scores[name];delete totals[name];
+  saveUsers(users);saveScores(scores);setStorage('mkb_totals',totals);
+  renderTeacherTable();
+}
+}
+</script>
+
+<div id="pending-screen" class="screen" style="justify-content:center;align-items:center;padding:24px">
+  <div style="background:white;border-radius:20px;padding:40px 28px;width:100%;max-width:380px;box-shadow:0 4px 20px rgba(255,110,180,0.15);border:2px solid #ffc94d;text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center">
+    <div style="font-size:4rem">⏳</div>
+    <div style="font-family:'Fredoka One',cursive;font-size:1.5rem;color:#ffc94d">ממתין/ת לאישור</div>
+    <div style="color:#999;font-size:0.95rem;line-height:1.6">שלחנו בקשה למורה שלך.<br>כשתאשר — תוכל/י לשחק!</div>
+    <button onclick="checkApproval()" style="padding:12px 24px;border-radius:14px;border:none;background:#5ecfda;color:white;font-family:'Fredoka One',cursive;font-size:1rem;cursor:pointer;width:100%">בדוק/י שוב ✅</button>
+    <button onclick="logout()" style="background:none;border:none;color:#bbb;cursor:pointer;font-size:0.85rem">יציאה</button>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getFirestore,doc,setDoc,getDoc,collection,getDocs,deleteDoc}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const app=initializeApp({apiKey:"AIzaSyBVIhzzo7G03BXGzNxKpIzxLINEAvXICBk",authDomain:"math-game-4e368.firebaseapp.com",projectId:"math-game-4e368",storageBucket:"math-game-4e368.firebasestorage.app",messagingSenderId:"721034010164",appId:"1:721034010164:web:132e7cda4729353021b461"});
+const db=getFirestore(app);
+window._db=db;window._fb={doc,setDoc,getDoc,collection,getDocs,deleteDoc};
+window.dispatchEvent(new Event('fbReady'));
+</script>
+<script>
+// Firebase helpers
+function fbReady(){return!!window._db;}
+async function fbGet(col,id){if(!window._db)return null;try{const d=await window._fb.getDoc(window._fb.doc(window._db,col,id));return d.exists()?d.data():null;}catch(e){return null;}}
+async function fbSet(col,id,data){if(!window._db)return;try{await window._fb.setDoc(window._fb.doc(window._db,col,id),data,{merge:true});}catch(e){}}
+async function fbDel(col,id){if(!window._db)return;try{await window._fb.deleteDoc(window._fb.doc(window._db,col,id));}catch(e){}}
+async function fbAll(col){if(!window._db)return{};try{const s=await window._fb.getDocs(window._fb.collection(window._db,col));const r={};s.forEach(d=>r[d.id]=d.data());return r;}catch(e){return{};}}
+async function checkApproval(){
+  if(!state.currentUser)return;
+  const u=await fbGet('users',state.currentUser);
+  if(u&&u.status==='approved'){clearInterval(window._pi);showAppScreen();}
+  else alert('עדיין ממתין/ת לאישור המורה 😊');
+}
+function showPendingScreen(){
+  showScreen('pending-screen');
+  if(window._pi)clearInterval(window._pi);
+  window._pi=setInterval(async()=>{
+    const u=await fbGet('users',state.currentUser);
+    if(u&&u.status==='approved'){clearInterval(window._pi);showAppScreen();}
+  },10000);
+}
+</script>
+</body>
+</html>
+
